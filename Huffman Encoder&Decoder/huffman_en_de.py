@@ -1,126 +1,133 @@
 import heapq
-from collections import defaultdict, Counter
-from tkinter import Tk, Label, Button, Text, Scrollbar, END, messagebox
+from collections import Counter, namedtuple
 
-class Node:
-    def __init__(self, char, freq):
+# Define a class for the Huffman Tree nodes
+class HuffmanNode:
+    def __init__(self, char, freq, left=None, right=None):
         self.char = char
         self.freq = freq
-        self.left = None
-        self.right = None
+        self.left = left
+        self.right = right
 
+    # Define comparison operators for heap operations
     def __lt__(self, other):
         return self.freq < other.freq
 
-def build_frequency_table(text):
-    return Counter(text)
+class HuffmanCoding:
+    def __init__(self):
+        self.heap = []
+        self.codes = {}
+        self.reverse_mapping = {}
 
-def build_huffman_tree(freq_table):
-    priority_queue = [Node(char, freq) for char, freq in freq_table.items()]
-    heapq.heapify(priority_queue)
+    def build_frequency_dict(self, text):
+        frequency = Counter(text)
+        return frequency
 
-    while len(priority_queue) > 1:
-        left = heapq.heappop(priority_queue)
-        right = heapq.heappop(priority_queue)
+    def build_heap(self, frequency):
+        for key in frequency:
+            node = HuffmanNode(key, frequency[key])
+            heapq.heappush(self.heap, node)
 
-        merged = Node(None, left.freq + right.freq)
-        merged.left = left
-        merged.right = right
-        heapq.heappush(priority_queue, merged)
+    def merge_nodes(self):
+        while len(self.heap) > 1:
+            node1 = heapq.heappop(self.heap)
+            node2 = heapq.heappop(self.heap)
+            merged = HuffmanNode(None, node1.freq + node2.freq, node1, node2)
+            heapq.heappush(self.heap, merged)
 
-    return priority_queue[0]
+    def build_codes_helper(self, root, current_code):
+        if root is None:
+            return
 
-def build_codes(node, prefix='', codebook=defaultdict()):
-    if node is not None:
-        if node.char is not None:
-            codebook[node.char] = prefix
-        build_codes(node.left, prefix + '0', codebook)
-        build_codes(node.right, prefix + '1', codebook)
-    return codebook
+        if root.char is not None:
+            self.codes[root.char] = current_code
+            self.reverse_mapping[current_code] = root.char
+            return
 
-def encode(text):
-    freq_table = build_frequency_table(text)
-    huffman_tree = build_huffman_tree(freq_table)
-    codebook = build_codes(huffman_tree)
-    return ''.join(codebook[char] for char in text), codebook
+        self.build_codes_helper(root.left, current_code + "0")
+        self.build_codes_helper(root.right, current_code + "1")
 
-def decode(encoded_text, codebook):
-    reversed_codebook = {v: k for k, v in codebook.items()}
-    current_code = ''
-    decoded_text = ''
-    for bit in encoded_text:
-        current_code += bit
-        if current_code in reversed_codebook:
-            decoded_text += reversed_codebook[current_code]
-            current_code = ''
-    return decoded_text
-def encode_text():
-    text = input_text.get("1.0", END).strip()
-    if not text:
-        messagebox.showwarning("Input Error", "Please enter some text to encode.")
-        return
-    
-    encoded_text, codebook = encode(text)
-    encoded_output.delete("1.0", END)
-    encoded_output.insert(END, encoded_text)
-    
-    code_output.delete("1.0", END)
-    for char, code in codebook.items():
-        code_output.insert(END, f"{char}: {code}\n")
+    def build_codes(self):
+        root = heapq.heappop(self.heap)
+        self.build_codes_helper(root, "")
 
-def decode_text():
-    encoded_text = encoded_input.get("1.0", END).strip()
-    codebook_text = code_output.get("1.0", END).strip()
-    
-    if not encoded_text:
-        messagebox.showwarning("Input Error", "Please enter encoded text to decode.")
-        return
-    
-    codebook = {}
-    for line in codebook_text.splitlines():
-        if ':' in line:
-            char, code = line.split(':')
-            codebook[code.strip()] = char.strip()
+    def get_encoded_text(self, text):
+        encoded_text = ""
+        for char in text:
+            encoded_text += self.codes[char]
+        return encoded_text
 
-    try:
-        decoded_text = decode(encoded_text, codebook)
-        decoded_output.delete("1.0", END)
-        decoded_output.insert(END, decoded_text)
-    except Exception as e:
-        messagebox.showerror("Decoding Error", f"Error decoding text: {e}")
+    def pad_encoded_text(self, encoded_text):
+        extra_padding = 8 - len(encoded_text) % 8
+        for i in range(extra_padding):
+            encoded_text += "0"
 
-def main():
-    global input_text, encoded_output, code_output, encoded_input, decoded_output
+        padded_info = "{0:08b}".format(extra_padding)
+        encoded_text = padded_info + encoded_text
+        return encoded_text
 
-    root = Tk()
-    root.title("Huffman Coding GUI")
+    def get_byte_array(self, padded_encoded_text):
+        if len(padded_encoded_text) % 8 != 0:
+            print("Encoded text not padded properly")
+            exit(0)
 
-    Label(root, text="Input Text:").grid(row=0, column=0, padx=10, pady=10)
-    input_text = Text(root, height=10, width=40)
-    input_text.grid(row=1, column=0, padx=10, pady=10)
+        b = bytearray()
+        for i in range(0, len(padded_encoded_text), 8):
+            byte = padded_encoded_text[i:i+8]
+            b.append(int(byte, 2))
+        return b
 
-    Button(root, text="Encode", command=encode_text).grid(row=2, column=0, padx=10, pady=10)
+    def compress(self, text):
+        frequency = self.build_frequency_dict(text)
+        self.build_heap(frequency)
+        self.merge_nodes()
+        self.build_codes()
 
-    Label(root, text="Encoded Output:").grid(row=3, column=0, padx=10, pady=10)
-    encoded_output = Text(root, height=5, width=40)
-    encoded_output.grid(row=4, column=0, padx=10, pady=10)
+        encoded_text = self.get_encoded_text(text)
+        padded_encoded_text = self.pad_encoded_text(encoded_text)
 
-    Label(root, text="Codebook:").grid(row=5, column=0, padx=10, pady=10)
-    code_output = Text(root, height=10, width=40)
-    code_output.grid(row=6, column=0, padx=10, pady=10)
+        return self.get_byte_array(padded_encoded_text), self.codes
 
-    Label(root, text="Encoded Input for Decoding:").grid(row=0, column=1, padx=10, pady=10)
-    encoded_input = Text(root, height=5, width=40)
-    encoded_input.grid(row=1, column=1, padx=10, pady=10)
+    def remove_padding(self, padded_encoded_text):
+        padded_info = padded_encoded_text[:8]
+        extra_padding = int(padded_info, 2)
 
-    Button(root, text="Decode", command=decode_text).grid(row=2, column=1, padx=10, pady=10)
+        padded_encoded_text = padded_encoded_text[8:] 
+        encoded_text = padded_encoded_text[:-1*extra_padding]
 
-    Label(root, text="Decoded Output:").grid(row=3, column=1, padx=10, pady=10)
-    decoded_output = Text(root, height=10, width=40)
-    decoded_output.grid(row=4, column=1, padx=10, pady=10)
+        return encoded_text
 
-    root.mainloop()
+    def decode_text(self, encoded_text):
+        current_code = ""
+        decoded_text = ""
 
+        for bit in encoded_text:
+            current_code += bit
+            if current_code in self.reverse_mapping:
+                character = self.reverse_mapping[current_code]
+                decoded_text += character
+                current_code = ""
+
+        return decoded_text
+
+    def decompress(self, byte_array):
+        bit_string = ""
+
+        for byte in byte_array:
+            bit_string += "{0:08b}".format(byte)
+
+        encoded_text = self.remove_padding(bit_string)
+
+        return self.decode_text(encoded_text)
+
+# Example usage
 if __name__ == "__main__":
-    main()
+    text = "this is an example for huffman encoding"
 
+    huffman_coding = HuffmanCoding()
+    compressed_data, huffman_codes = huffman_coding.compress(text)
+    print(f"Compressed data: {compressed_data}")
+    print(f"Huffman Codes: {huffman_codes}")
+
+    decompressed_data = huffman_coding.decompress(compressed_data)
+    print(f"Decompressed data: {decompressed_data}")
